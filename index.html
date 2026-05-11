@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECE Board Simulator</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg: #f8fafc; --surface: #ffffff; --primary: #2563eb; --primary-hover: #1d4ed8;
+            --text: #1e293b; --text-light: #64748b; --border: #e2e8f0;
+            --correct: #16a34a; --correct-bg: #dcfce7; --wrong: #dc2626; --wrong-bg: #fee2e2;
+            --sidebar: #ffffff;
+        }
+
+        .dark-mode {
+            --bg: #0f172a; --surface: #1e293b; --primary: #3b82f6; --primary-hover: #60a5fa;
+            --text: #f8fafc; --text-light: #94a3b8; --border: #334155; --sidebar: #1e293b;
+            --correct: #22c55e; --correct-bg: #14532d; --wrong: #ef4444; --wrong-bg: #7f1d1d;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--bg);
+            color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Layout & Mobile Responsiveness */
+        .sidebar {
+            width: 250px; background-color: var(--sidebar); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 20px 0; transition: transform 0.3s ease;
+            position: relative; z-index: 100;
+        }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .top-bar {
+            height: 60px; border-bottom: 1px solid var(--border); display: flex;
+            align-items: center; padding: 0 20px; background: var(--surface); gap: 15px;
+        }
+        .scroll-area { flex: 1; padding: 30px; overflow-y: auto; }
+
+        .hamburger { display: none; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text); }
+        .search-bar { flex: 1; padding: 10px 15px; border: 1px solid var(--border); border-radius: 20px; background: var(--bg); color: var(--text); }
+
+        @media (max-width: 768px) {
+            .sidebar { position: absolute; height: 100%; transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .hamburger { display: block; }
+        }
+
+        .sidebar h2 { text-align: center; color: var(--primary); margin-bottom: 20px; }
+        .nav-btn {
+            background: none; border: none; padding: 15px 25px; text-align: left;
+            font-size: 1rem; cursor: pointer; color: var(--text-light); width: 100%;
+        }
+        .nav-btn:hover { background-color: var(--bg); color: var(--primary); }
+        .nav-btn.active { background-color: rgba(37, 99, 235, 0.1); color: var(--primary); border-left: 4px solid var(--primary); font-weight: bold; }
+
+        .view { display: none; max-width: 900px; margin: 0 auto; }
+        .view.active { display: block; }
+        
+        button {
+            background-color: var(--primary); color: white; border: none; padding: 10px 16px;
+            border-radius: 6px; cursor: pointer; font-weight: 600; transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button.secondary { background-color: var(--text-light); }
+
+        .card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 20px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        
+        textarea, input[type="text"] {
+            width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+            box-sizing: border-box; background: var(--bg); color: var(--text); margin-bottom: 15px;
+        }
+        textarea { height: 250px; font-family: monospace; }
+
+        /* Exam Options */
+        .option-label {
+            display: block; padding: 12px 15px; border: 1px solid var(--border);
+            border-radius: 6px; margin-bottom: 8px; cursor: pointer;
+        }
+        .option-label:hover { background: rgba(37, 99, 235, 0.05); }
+        .option-label.selected { border-color: var(--primary); background: rgba(37, 99, 235, 0.1); }
+        .option-label.correct { background-color: var(--correct-bg); border-color: var(--correct); color: var(--correct); font-weight: bold; }
+        .option-label.wrong { background-color: var(--wrong-bg); border-color: var(--wrong); color: var(--wrong); text-decoration: line-through; }
+
+        .q-image { max-width: 100%; border-radius: 6px; margin: 10px 0; }
+
+        /* Gamification */
+        .streak-container {
+            display: flex; gap: 5px; margin-top: 10px; overflow-x: auto; padding-bottom: 10px;
+        }
+        .streak-box {
+            width: 25px; height: 25px; border-radius: 4px; background: var(--border);
+            display: flex; align-items: center; justify-content: center; font-size: 0.7rem;
+        }
+        .streak-box.active { background: var(--correct); color: white; }
+
+        /* Print Layout Rules */
+        @media print {
+            body { background: white; color: black; display: block; height: auto; overflow: visible; }
+            .sidebar, .top-bar, button, .nav-btn, .gamification, .chart-container { display: none !important; }
+            .main-content, .scroll-area { display: block; overflow: visible; padding: 0; }
+            .view { max-width: 100%; }
+            
+            #print-container {
+                column-count: 2; column-gap: 40px; font-size: 11pt;
+            }
+            .print-item { break-inside: avoid; margin-bottom: 20px; }
+            .print-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid black; padding-bottom: 10px; column-span: all; }
+            
+            #answer-key-page {
+                page-break-before: always; column-count: 4; font-family: monospace; font-size: 12pt;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar">
+        <h2>ECE Simulator</h2>
+        <button class="nav-btn active" onclick="switchSubject('Math')">Math</button>
+        <button class="nav-btn" onclick="switchSubject('GEAS')">GEAS</button>
+        <button class="nav-btn" onclick="switchSubject('ELECS')">ELECS</button>
+        <button class="nav-btn" onclick="switchSubject('ESAT')">ESAT</button>
+        <div style="flex-grow: 1;"></div>
+        <button class="nav-btn" onclick="switchView('view-analytics')">Analytics</button>
+        <button class="nav-btn" onclick="switchView('view-settings')">Settings</button>
+    </div>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <button class="hamburger" onclick="toggleSidebar()">☰</button>
+            <input type="text" class="search-bar" id="global-search" placeholder="Search cheat sheet (e.g., 'Fresnel clearance' or 'Arduino Mega')..." oninput="handleSearch()">
+        </div>
+
+        <div class="scroll-area">
+            
+            <!-- DASHBOARD -->
+            <div id="view-dashboard" class="view active">
+                <div class="flex-between">
+                    <h1 id="subject-title">Subject</h1>
+                    <button onclick="switchView('view-add')">+ Add Set</button>
+                </div>
+
+                <div class="card gamification">
+                    <div class="flex-between">
+                        <h3>Study Consistency</h3>
+                        <strong style="color: var(--primary); font-size: 1.2rem;">🔥 <span id="streak-count">0</span> Day Streak</strong>
+                    </div>
+                    <div class="streak-container" id="streak-map"></div>
+                </div>
+
+                <div id="sets-container"></div>
+            </div>
+
+            <!-- ADD SET VIEW -->
+            <div id="view-add" class="view">
+                <h1>Add Questions</h1>
+                <input type="text" id="set-name" placeholder="Set Name (e.g., Board Sim 1)">
+                <p style="font-size:0.9rem; color:var(--text-light)">
+                    Format: <b>A.</b> Option / <b>Ans:</b> A.<br>
+                    Images: Use <code>[IMG: data:image/png;base64,...]</code> or <code>[IMG: https://link.com/img.png]</code><br>
+                </p>
+                <textarea id="bulk-input" placeholder="What hardware component converts weight into an electrical signal in an automated livestock feed vending machine?
+A. Arduino Mega 2560
+B. HX711 Amplifier
+C. Load Cell
+D. Archimedes Screw
+Ans: C"></textarea>
+                <button onclick="parseAndSave()">Save Questions</button>
+                <button class="secondary" onclick="switchView('view-dashboard')">Cancel</button>
+            </div>
+
+            <!-- EXAM SETUP -->
+            <div id="view-exam-setup" class="view">
+                <h1 id="setup-title">Setup Exam</h1>
+                <div class="card">
+                    <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 1.1rem; cursor: pointer;">
+                        <input type="checkbox" id="scramble-toggle" style="width:20px; height:20px;">
+                        <b>Dynamic Scrambling</b> (Randomize Question & Option Order)
+                    </label>
+                    <button onclick="startExamEngine()" style="width: 100%; padding: 15px;">Start Simulation</button>
+                    <button class="secondary" onclick="generatePDFMock()" style="width: 100%; padding: 15px; margin-top: 10px;">🖨️ Print as PDF Mock Exam</button>
+                </div>
+            </div>
+
+            <!-- ACTIVE EXAM -->
+            <div id="view-exam" class="view">
+                <div class="flex-between">
+                    <h1 id="exam-title">Exam</h1>
+                    <button class="secondary" onclick="submitExam()">Submit</button>
+                </div>
+                <div id="exam-container"></div>
+                <button style="width: 100%; padding: 15px; margin-top: 20px;" onclick="submitExam()">Finish Exam</button>
+            </div>
+
+            <!-- RESULTS -->
+            <div id="view-review" class="view">
+                <h1>Results</h1>
+                <h2 style="text-align: center; font-size: 3rem; color: var(--primary); margin: 0;" id="review-score">0/0</h2>
+                <p style="text-align: center; margin-bottom: 20px;" id="review-percent">0%</p>
+                <button onclick="switchView('view-dashboard')" style="display:block; margin: 0 auto 30px;">Return</button>
+                <div id="review-container"></div>
+            </div>
+
+            <!-- SEARCH RESULTS -->
+            <div id="view-search" class="view">
+                <h1>Cheat Sheet Search</h1>
+                <div id="search-results-container"></div>
+            </div>
+
+            <!-- ANALYTICS -->
+            <div id="view-analytics" class="view">
+                <h1>Analytics & Pacing</h1>
+                <div class="card">
+                    <h3>Pacing (Seconds per Question)</h3>
+                    <p style="font-size:0.9rem; color:var(--text-light)">Target: 144 seconds (2.4 mins) for PRC Board.</p>
+                    <canvas id="pacingChart" style="height: 250px; width: 100%;"></canvas>
+                </div>
+                <div class="card">
+                    <h3>Accuracy Trends</h3>
+                    <canvas id="scoreChart" style="height: 250px; width: 100%;"></canvas>
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div id="view-settings" class="view">
+                <h1>Settings</h1>
+                <div class="card"><button class="secondary" onclick="toggleDarkMode()">Toggle Dark Mode</button></div>
+                <div class="card">
+                    <h3>Backup / Restore</h3>
+                    <button onclick="exportData()">Export Data</button>
+                    <input type="file" id="import-file" accept=".json" style="margin-top: 10px;">
+                    <button class="secondary" onclick="importData()">Import Data</button>
+                </div>
+            </div>
+
+            <!-- PRINT CONTAINER (Hidden normally) -->
+            <div id="print-view" style="display: none;">
+                <div class="print-header">
+                    <h1 id="print-h1">Mock Exam</h1>
+                    <p>Name: ______________________ Date: ____________ Score: _______ / _______</p>
+                </div>
+                <div id="print-container"></div>
+                <div id="answer-key-page">
+                    <h2 style="column-span: all; text-align: center; border-bottom: 2px solid black;">Answer Key</h2>
+                    <div id="print-answers"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<script>
+    // --- SERVICE WORKER REGISTRATION ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW setup failed. Running in browser mode.', err));
+        });
+    }
+
+    // --- APP STATE ---
+    const STORAGE_KEY = 'ece_sim_db';
+    let db = {
+        Math: { sets: [], history: [] },
+        GEAS: { sets: [], history: [] },
+        ELECS: { sets: [], history: [] },
+        ESAT: { sets: [], history: [] },
+        activity: {}, streak: 0, lastStudyDate: null,
+        settings: { darkMode: false }
+    };
+    
+    let currentSubject = 'Math';
+    let activeSetIndex = -1;
+    let examState = { questions: [], answers: {}, timeSpent: {}, lastActionTime: 0 };
+    let charts = {};
+
+    // --- INIT ---
+    function loadData() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) db = JSON.parse(saved);
+        if (db.settings.darkMode) document.body.classList.add('dark-mode');
+        updateStreak();
+    }
+    function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+    window.onload = () => { loadData(); switchSubject('Math'); };
+
+    // --- UI NAVIGATION ---
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    
+    function switchSubject(subject) {
+        currentSubject = subject;
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        if(window.innerWidth <= 768) toggleSidebar();
+        switchView('view-dashboard');
+    }
+
+    function switchView(viewId) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('print-view').style.display = 'none';
+        document.getElementById(viewId).classList.add('active');
+        if(viewId === 'view-dashboard') renderDashboard();
+        if(viewId === 'view-analytics') renderAnalytics();
+    }
+
+    // --- DASHBOARD & GAMIFICATION ---
+    function renderDashboard() {
+        document.getElementById('subject-title').innerText = currentSubject;
+        document.getElementById('streak-count').innerText = db.streak;
+        
+        // Render Heatmap (Last 14 days)
+        const streakMap = document.getElementById('streak-map');
+        streakMap.innerHTML = '';
+        for(let i=13; i>=0; i--) {
+            let d = new Date(); d.setDate(d.getDate() - i);
+            let dateStr = d.toISOString().split('T')[0];
+            let count = db.activity[dateStr] || 0;
+            let box = document.createElement('div');
+            box.className = `streak-box ${count > 0 ? 'active' : ''}`;
+            box.title = `${dateStr}: ${count} exams`;
+            box.innerText = count > 0 ? '✓' : '';
+            streakMap.appendChild(box);
+        }
+
+        const container = document.getElementById('sets-container');
+        container.innerHTML = '';
+        db[currentSubject].sets.forEach((set, idx) => {
+            container.innerHTML += `
+                <div class="card flex-between">
+                    <div><h3 style="margin:0 0 5px 0">${set.name}</h3><span style="font-size:0.9rem; color:var(--text-light)">${set.questions.length} Items</span></div>
+                    <button onclick="setupExam(${idx})">Take Sim</button>
+                </div>`;
+        });
+    }
+
+    function updateStreak() {
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        if (db.lastStudyDate !== today && db.lastStudyDate !== yesterday && db.lastStudyDate !== null) {
+            db.streak = 0; // Streak broken
+        }
+    }
+
+    function recordActivity() {
+        const today = new Date().toISOString().split('T')[0];
+        db.activity[today] = (db.activity[today] || 0) + 1;
+        if(db.lastStudyDate !== today) { db.streak++; db.lastStudyDate = today; }
+        saveData();
+    }
+
+    // --- PARSER (Text + Images) ---
+    function parseAndSave() {
+        const name = document.getElementById('set-name').value.trim();
+        const text = document.getElementById('bulk-input').value;
+        if (!name || !text) return alert("Fill all fields.");
+
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        let questions = [], currentQ = null;
+
+        for (let line of lines) {
+            const ansMatch = line.match(/^(?:Answer|Ans):\s*([A-D])/i);
+            if (ansMatch && currentQ && currentQ.options.length > 0) {
+                currentQ.answer = ansMatch[1].toUpperCase();
+                questions.push(currentQ);
+                currentQ = null; continue;
+            }
+
+            const optMatch = line.match(/^([A-D])[\.\)]\s*(.+)/i);
+            if (optMatch) {
+                if (!currentQ) currentQ = { text: "Missing Q", options: [] };
+                currentQ.options.push({ letter: optMatch[1].toUpperCase(), text: optMatch[2] });
+                continue;
+            }
+
+            // Image tag processing: [IMG: url]
+            let processedLine = line.replace(/\[IMG:\s*(.+?)\]/g, '<img class="q-image" src="$1">');
+
+            if (!currentQ) currentQ = { text: processedLine, options: [] };
+            else if (currentQ.options.length === 0) currentQ.text += " " + processedLine;
+        }
+
+        if(questions.length === 0) return alert("No valid questions found.");
+        db[currentSubject].sets.push({ name, questions });
+        saveData(); switchView('view-dashboard');
+    }
+
+    // --- EXAM ENGINE (Scrambling & Pacing) ---
+    function setupExam(setIdx) {
+        activeSetIndex = setIdx;
+        const set = db[currentSubject].sets[activeSetIndex];
+        document.getElementById('setup-title').innerText = `${set.name} Configuration`;
+        switchView('view-exam-setup');
+    }
+
+    function startExamEngine() {
+        const set = db[currentSubject].sets[activeSetIndex];
+        const doScramble = document.getElementById('scramble-toggle').checked;
+        
+        // Deep clone to prevent mutating the database
+        let qList = JSON.parse(JSON.stringify(set.questions));
+
+        if (doScramble) {
+            qList.sort(() => Math.random() - 0.5); // Shuffle questions
+            qList.forEach(q => {
+                const correctText = q.options.find(o => o.letter === q.answer).text;
+                q.options.sort(() => Math.random() - 0.5); // Shuffle options
+                q.options.forEach((o, i) => o.letter = ['A','B','C','D'][i]); // Reassign A,B,C,D
+                q.answer = q.options.find(o => o.text === correctText).letter; // Map new answer letter
+            });
+        }
+
+        examState = { questions: qList, answers: {}, timeSpent: {}, lastActionTime: Date.now() };
+        document.getElementById('exam-title').innerText = set.name;
+        
+        const container = document.getElementById('exam-container');
+        container.innerHTML = '';
+        
+        qList.forEach((q, i) => {
+            const block = document.createElement('div');
+            block.className = 'card';
+            block.innerHTML = `<div style="font-weight:600; margin-bottom:15px;">${i+1}. ${q.text}</div><div id="opts-${i}"></div>`;
+            container.appendChild(block);
+
+            const optContainer = document.getElementById(`opts-${i}`);
+            q.options.forEach(opt => {
+                const label = document.createElement('label');
+                label.className = 'option-label';
+                label.innerHTML = `<input type="radio" name="q_${i}" value="${opt.letter}" style="display:none;"> ${opt.letter}. ${opt.text}`;
+                label.onclick = () => {
+                    // Pacing logic
+                    const now = Date.now();
+                    const seconds = (now - examState.lastActionTime) / 1000;
+                    examState.timeSpent[i] = (examState.timeSpent[i] || 0) + seconds;
+                    examState.lastActionTime = now;
+
+                    examState.answers[i] = opt.letter;
+                    optContainer.querySelectorAll('.option-label').forEach(l => l.classList.remove('selected'));
+                    label.classList.add('selected');
+                };
+                optContainer.appendChild(label);
+            });
+        });
+
+        renderMathInElement(container, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
+        switchView('view-exam');
+    }
+
+    function submitExam() {
+        let score = 0;
+        const total = examState.questions.length;
+        
+        // Calculate average pacing for analytics
+        let totalSecs = 0;
+        for(let k in examState.timeSpent) totalSecs += examState.timeSpent[k];
+        let avgPacing = total > 0 ? (totalSecs / total).toFixed(1) : 0;
+
+        examState.questions.forEach((q, i) => { if (examState.answers[i] === q.answer) score++; });
+        const pct = Math.round((score/total)*100);
+        
+        db[currentSubject].history.push({ date: new Date().toLocaleDateString(), score, total, pct, pacing: avgPacing });
+        recordActivity();
+
+        document.getElementById('review-score').innerText = `${score} / ${total}`;
+        document.getElementById('review-percent').innerText = `${pct}% | Avg Time: ${avgPacing}s/item`;
+        
+        const revContainer = document.getElementById('review-container');
+        revContainer.innerHTML = '';
+
+        examState.questions.forEach((q, i) => {
+            const block = document.createElement('div');
+            block.className = 'card';
+            const isCorrect = examState.answers[i] === q.answer;
+            block.style.borderLeft = isCorrect ? "5px solid var(--correct)" : "5px solid var(--wrong)";
+            
+            let paceHtml = `<span style="float:right; font-size:0.8rem; color:var(--text-light)">${Math.round(examState.timeSpent[i]||0)}s</span>`;
+            block.innerHTML = `<div style="font-weight:bold; margin-bottom:10px">${i+1}. ${q.text} ${paceHtml}</div>`;
+            
+            q.options.forEach(opt => {
+                let colorClass = '';
+                if(opt.letter === q.answer) colorClass = 'correct';
+                else if(opt.letter === examState.answers[i]) colorClass = 'wrong';
+                block.innerHTML += `<div class="option-label ${colorClass}">${opt.letter}. ${opt.text}</div>`;
+            });
+            revContainer.appendChild(block);
+        });
+
+        renderMathInElement(revContainer, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
+        switchView('view-review');
+    }
+
+    // --- PDF PRINT MOCK EXAM ---
+    function generatePDFMock() {
+        const set = db[currentSubject].sets[activeSetIndex];
+        let qList = JSON.parse(JSON.stringify(set.questions)); // Deep copy
+        const doScramble = document.getElementById('scramble-toggle').checked;
+        
+        if (doScramble) {
+            qList.sort(() => Math.random() - 0.5);
+            qList.forEach(q => {
+                const correctText = q.options.find(o => o.letter === q.answer).text;
+                q.options.sort(() => Math.random() - 0.5);
+                q.options.forEach((o, i) => o.letter = ['A','B','C','D'][i]);
+                q.answer = q.options.find(o => o.text === correctText).letter;
+            });
+        }
+
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('print-view').style.display = 'block';
+        document.getElementById('print-h1').innerText = `${currentSubject}: ${set.name}`;
+
+        const pCont = document.getElementById('print-container');
+        const aCont = document.getElementById('print-answers');
+        pCont.innerHTML = ''; aCont.innerHTML = '';
+
+        qList.forEach((q, i) => {
+            // Write Question
+            let html = `<div class="print-item"><b>${i+1}.</b> ${q.text}<br>`;
+            q.options.forEach(o => html += `&nbsp;&nbsp;${o.letter}. ${o.text}<br>`);
+            html += `</div>`;
+            pCont.innerHTML += html;
+            
+            // Write Answer Key
+            aCont.innerHTML += `<div><b>${i+1}.</b> ${q.answer}</div>`;
+        });
+
+        renderMathInElement(document.getElementById('print-view'), { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
+        
+        setTimeout(() => {
+            window.print();
+            document.getElementById('print-view').style.display = 'none';
+            switchView('view-exam-setup');
+        }, 500); // delay allows KaTeX to render before printing
+    }
+
+    // --- GLOBAL CHEAT SHEET SEARCH ---
+    function handleSearch() {
+        const q = document.getElementById('global-search').value.toLowerCase();
+        if(q.length < 3) return switchView('view-dashboard'); // Go back if empty
+        
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-search').classList.add('active');
+        const resCont = document.getElementById('search-results-container');
+        resCont.innerHTML = '';
+
+        ['Math', 'GEAS', 'ELECS', 'ESAT'].forEach(subj => {
+            db[subj].sets.forEach(set => {
+                set.questions.forEach(item => {
+                    if(item.text.toLowerCase().includes(q) || item.options.some(o => o.text.toLowerCase().includes(q))) {
+                        let html = `<div class="card"><div style="font-size:0.8rem; color:var(--primary); font-weight:bold; margin-bottom:5px;">${subj} > ${set.name}</div>`;
+                        html += `<div><b>Q:</b> ${item.text}</div>`;
+                        html += `<div style="color:var(--correct); font-weight:bold; margin-top:5px;">Ans: ${item.answer}. ${item.options.find(o=>o.letter===item.answer).text}</div></div>`;
+                        resCont.innerHTML += html;
+                    }
+                });
+            });
+        });
+        if(resCont.innerHTML === '') resCont.innerHTML = '<p>No matching questions found.</p>';
+        renderMathInElement(resCont, { delimiters: [{left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false}] });
+    }
+
+    // --- ANALYTICS ---
+    function renderAnalytics() {
+        const hist = db[currentSubject].history;
+        const labels = hist.map((_, i) => `Exam ${i+1}`);
+        const pacingData = hist.map(h => parseFloat(h.pacing) || 0);
+        const scoreData = hist.map(h => h.pct);
+
+        if(charts.pacing) charts.pacing.destroy();
+        if(charts.score) charts.score.destroy();
+
+        Chart.defaults.color = db.settings.darkMode ? '#94a3b8' : '#64748b';
+
+        charts.pacing = new Chart(document.getElementById('pacingChart').getContext('2d'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Seconds / Question', data: pacingData, borderColor: '#f59e0b', tension: 0.3 }] }
+        });
+
+        charts.score = new Chart(document.getElementById('scoreChart').getContext('2d'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Accuracy %', data: scoreData, borderColor: '#10b981', tension: 0.3 }] },
+            options: { scales: { y: { min: 0, max: 100 } } }
+        });
+    }
+
+    // --- SETTINGS ---
+    function toggleDarkMode() {
+        db.settings.darkMode = !db.settings.darkMode;
+        document.body.classList.toggle('dark-mode');
+        saveData(); if(document.getElementById('view-analytics').classList.contains('active')) renderAnalytics();
+    }
+    function exportData() {
+        const anchor = document.createElement('a');
+        anchor.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
+        anchor.download = `ece_backup.json`; anchor.click();
+    }
+    function importData() {
+        const file = document.getElementById('import-file').files[0];
+        if(!file) return alert("Select a file.");
+        const reader = new FileReader();
+        reader.onload = e => { db = JSON.parse(e.target.result); saveData(); location.reload(); };
+        reader.readAsText(file);
+    }
+</script>
+</body>
+</html>
